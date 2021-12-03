@@ -1,4 +1,6 @@
-module.exports = `const crypto = require(\"crypto\");
+const { removeScapeStringTag } = require("../../../utils/string-utils");
+
+module.exports = removeScapeStringTag(`const crypto = require(\"crypto\");
 
 class Idempotency {
   constructor() {}
@@ -39,4 +41,4 @@ class Idempotency {
   }  
 }
 
-module.exports = Idempotency;`;
+module.exports = Idempotency;`);
