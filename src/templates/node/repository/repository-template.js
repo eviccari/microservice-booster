@@ -18,7 +18,7 @@ class Repository {
     return new Promise((resolve, reject) => {
       const putParams = {
         TableName: TABLE_NAME,
-        Item: entity,
+        Item: entity
       };
 
       const { PK, idempotencyKey } = entity;
@@ -29,19 +29,19 @@ class Repository {
           PK,
           IdempotencyActions.CREATE,
           idempotencyKey
-        ),
+        )
       };
 
       documentClient.transactWrite(
         {
           TransactItems: [
             {
-              Put: putParams,
+              Put: putParams 
             },
             {
-              Put: idempotencyParams,
-            },
-          ],
+              Put: idempotencyParams 
+            } 
+          ]
         },
         (error, data) => {
           if (error) {
@@ -70,19 +70,19 @@ class Repository {
           PK,
           IdempotencyActions.UPDATE,
           idempotencyKey
-        ),
+        )
       };
 
       documentClient.transactWrite(
         {
           TransactItems: [
             {
-              Update: updateParams,
+              Update: updateParams
             },
             {
-              Put: idempotencyParams,
-            },
-          ],
+              Put: idempotencyParams
+            }
+          ]
         },
         (error, data) => {
           if (error) {
@@ -106,9 +106,9 @@ class Repository {
       const params = {
         Key: {
           PK: PK,
-          SK: SK,
+          SK: SK
         },
-        TableName: TABLE_NAME,
+        TableName: TABLE_NAME
       };
 
       documentClient.get(params, (error, data) => {
@@ -133,9 +133,9 @@ class Repository {
       const params = {
         KeyConditionExpression: \"PK = :PK\",
         ExpressionAttributeValues: {
-          \":PK\": PK,
+          \":PK\": PK
         },
-        TableName: TABLE_NAME,
+        TableName: TABLE_NAME
       };
 
       documentClient.query(params, (error, data) => {
@@ -161,10 +161,10 @@ class Repository {
       const params = {
         Key: {
           PK: PK,
-          SK: SK,
+          SK: SK
         },
         TableName: TABLE_NAME,
-        ReturnValues: \"ALL_OLD\",
+        ReturnValues: \"ALL_OLD\"
       };
 
       documentClient.delete(params, (error, data) => {
@@ -189,47 +189,43 @@ class Repository {
    * @return {Object}
    */
   buildUpdateObjectParams(keyValuePairsObject) {
-    if (!keyValuePairsObject[\"PK\"]) throw new Error(\"pk_is_required\");
-    if (!keyValuePairsObject[\"SK\"]) throw new Error(\"sk_is_required\");
-    if (!keyValuePairsObject) throw new Error(\"key_value_pairs_are_required\");
+    this.validateKeyPairsForUpdate(keyValuePairsObject);
 
-    if (!keyValuePairsObject["idempotencyKey"])
-      throw new Error(\"idempotency_key_is_required\");
-
-    if (!keyValuePairsObject[\"keyCheck\"])
-      throw new Error(\"key_check_is_required\");
-
-    if (!keyValuePairsObject[\"status\"]) throw new Error(\"status_is_required\");
-
-    const status = keyValuePairsObject[\"status\"];
     const keyCheck = keyValuePairsObject[\"keyCheck\"];
     const key = {
       PK: keyValuePairsObject[\"PK\"],
-      SK: keyValuePairsObject[\"SK\"],
+      SK: keyValuePairsObject[\"SK\"]
     };
 
-    this.cleanUpdateExpression(keyValuePairsObject);
+    this.cleanUpdateExpression(keyValuePairsObject); // only attributes that must to be changed
 
     let updateParam = {};
     updateParam.TableName = TABLE_NAME;
     updateParam.Key = key;
 
     updateParam.ConditionExpression = \"version = :_keyCheck\";
-    updateParam.ExpressionAttributeNames = { \"#st\": \"status\" }; // all update command must change entity status
     updateParam.ReturnValues = \"UPDATED_NEW\";
 
-    let updateExpression = \"set #st = :_status\"; // first update instruction
-    let expressionAttributeValues = {};
+    updateParam.UpdateExpression = \"set \";
+    updateParam.ExpressionAttributeNames = {};
+    updateParam.ExpressionAttributeValues = {};
 
     for (const key in keyValuePairsObject) {
-      updateExpression = updateExpression.concat(\`, $SCAPE_STRING_PARAM{key} = :_$SCAPE_STRING_PARAM{key}\`);
-      expressionAttributeValues[\`:_$SCAPE_STRING_PARAM{key}\`] = keyValuePairsObject[key];
-    }
-    expressionAttributeValues[\":_status\"] = status; // bind status value
-    expressionAttributeValues[\":_keyCheck\"] = keyCheck; // bind keyCheck value
+      const attributeNameMask = \`#$SCAPE_STRING_PARAM{key}\`;
+      const attributeValueMask = \`:_$SCAPE_STRING_PARAM{key}\`;
 
-    updateParam.UpdateExpression = updateExpression;
-    updateParam.ExpressionAttributeValues = expressionAttributeValues;
+      updateParam.UpdateExpression = updateParam.UpdateExpression.concat(
+        \`$SCAPE_STRING_PARAM{attributeNameMask} = $SCAPE_STRING_PARAM{attributeValueMask}, \`
+      );
+
+      updateParam.ExpressionAttributeNames[attributeNameMask] = key;
+      updateParam.ExpressionAttributeValues[attributeValueMask] =
+        keyValuePairsObject[key];
+    }
+
+    updateParam.ExpressionAttributeValues[\":_keyCheck\"] = keyCheck; // bind keyCheck value
+    updateParam.UpdateExpression = updateParam.UpdateExpression.slice(0, -2); // remove last comma and blank space
+
     return updateParam;
   }
 
@@ -238,7 +234,6 @@ class Repository {
    * @param keyValuePairsObject
    */
   cleanUpdateExpression(keyValuePairsObject) {
-    delete keyValuePairsObject[\"status\"];
     delete keyValuePairsObject[\"timestamps\"];
     delete keyValuePairsObject[\"PK\"];
     delete keyValuePairsObject[\"SK\"];
@@ -246,6 +241,25 @@ class Repository {
     delete keyValuePairsObject[\"tableName\"];
     delete keyValuePairsObject[\"createdAt\"];
     delete keyValuePairsObject[\"createdBy\"];
+  }
+  
+  
+  /**
+   * Validates that object have necessary attributes to update
+   * @param keyValuePairsObject
+   */
+  validateKeyPairsForUpdate(keyValuePairsObject) {
+    if (!keyValuePairsObject[\"PK\"]) throw new Error(\"pk_is_required\");
+    if (!keyValuePairsObject[\"SK\"]) throw new Error(\"sk_is_required\");
+    if (!keyValuePairsObject) throw new Error(\"key_value_pairs_are_required\");
+
+    if (!keyValuePairsObject[\"idempotencyKey\"])
+      throw new Error(\"idempotency_key_is_required\");
+
+    if (!keyValuePairsObject[\"keyCheck\"])
+      throw new Error(\"key_check_is_required\");
+
+    if (!keyValuePairsObject[\"status\"]) throw new Error("status_is_required");
   }
 }
 
